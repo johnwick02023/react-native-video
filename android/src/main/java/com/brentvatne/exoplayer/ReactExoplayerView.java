@@ -224,7 +224,7 @@ public class ReactExoplayerView extends FrameLayout implements
                 RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
                 rctEventEmitter.receiveEvent(
                     getId(),
-                    "onVideoProgress",
+                    "onDownload",
                     map
                 );
             }
