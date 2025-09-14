@@ -157,9 +157,14 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.datasource.DefaultDataSource;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.Arguments;
-import com.brentvatne.exoplayer.CountingDataSource;
+import com.brentvatne.exoplayer.TrackInfo;
 import com.facebook.react.uimanager.events.RCTEventEmitter;
 import android.util.Log;
+import java.io.IOException;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
+import androidx.media3.exoplayer.analytics.PlaybackStatsListener;
+import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime;
+
 
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
@@ -201,7 +206,9 @@ public class ReactExoplayerView extends FrameLayout implements
     private PlaybackServiceBinder playbackServiceBinder;
     //Custom//////////////////////////////////////////////
     public long totalBytes = 0;
-
+    public int totalLoadedTime = 0;
+    public ArrayList<TrackInfo> tracksList = new ArrayList<>();
+    public TrackInfo selectedTrack = null;
     public interface ProgressListener {
         void onProgress(long currentTimeMs, long bytesDownloaded);
     }
@@ -212,14 +219,17 @@ public class ReactExoplayerView extends FrameLayout implements
         @Override
         public void run() {
             if (player != null) {
-                double currentTimeSec = player.getCurrentPosition() / 1000.0;
+                double elapsedSeconds = totalLoadedTime / 1000.0;
+                long bytesDownloaded = totalBytes;
+                totalLoadedTime = 0;
+                totalBytes = 0;
                 WritableMap map = Arguments.createMap();
-                map.putDouble("currentTime", currentTimeSec);
-                map.putDouble("bytesDownloaded", totalBytes);
+                map.putDouble("elapsedSeconds", elapsedSeconds);
+                map.putDouble("bytesDownloaded", bytesDownloaded);
 
                 ThemedReactContext reactContext = (ThemedReactContext) getContext();
-                Log.d("ReactExoplayerView", "Progress event sent: currentTime=" 
-                  + currentTimeSec + ", bytesDownloaded=" + totalBytes);
+                Log.d("ReactExoplayerView", "Progress event sent: elapsedSeconds=" 
+                  + elapsedSeconds + ", bytesDownloaded=" + bytesDownloaded);
 
                 RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
                 rctEventEmitter.receiveEvent(
@@ -232,21 +242,82 @@ public class ReactExoplayerView extends FrameLayout implements
             handler.postDelayed(this, 3000);
         }
     };
-    
-    
-    private void init(Context context) {
-        DefaultDataSource.Factory defaultFactory = new DefaultDataSource.Factory(context);
-        CountingDataSource.Factory countingFactory = new CountingDataSource.Factory(defaultFactory);
-        countingFactory.setListener(totalBytesSoFar -> {
-            this.totalBytes = totalBytesSoFar; 
-        });
-        ProgressiveMediaSource.Factory mediaSourceFactory = new ProgressiveMediaSource.Factory(countingFactory);
+    private void getAvailableVideoTracks() {
+        MappingTrackSelector.MappedTrackInfo mappedTrackInfo = trackSelector.getCurrentMappedTrackInfo();
+        if (mappedTrackInfo == null) return;
 
-        player = new ExoPlayer.Builder(context)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .build();
+        for (int rendererIndex = 0; rendererIndex < mappedTrackInfo.getRendererCount(); rendererIndex++) {
+            // Renderer type video = 0، audio = 1
+            if (mappedTrackInfo.getRendererType(rendererIndex) != androidx.media3.common.C.TRACK_TYPE_VIDEO)
+                continue;
+
+            TrackGroupArray trackGroups = mappedTrackInfo.getTrackGroups(rendererIndex);
+            for (int groupIndex = 0; groupIndex < trackGroups.length; groupIndex++) {
+                TrackGroup group = trackGroups.get(groupIndex);
+                for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
+                    Format format = group.getFormat(trackIndex);
+                    int width = format.width;
+                    int height = format.height;
+                    int bitrate = format.bitrate;
+
+                    Log.d("ReactExoplayerView",
+                            "Track " + trackIndex + ": " + width + "x" + height + " @" + bitrate + "bps");
+                }
+            }
+        }
+    }
+    
+    private void initializeBytesCounting(Context context, String url) {
+        ExoTrackSelection.Factory videoTrackSelectionFactory = new AdaptiveTrackSelection.Factory();
+        trackSelector = new DefaultTrackSelector(context, videoTrackSelectionFactory);
+        player = new ExoPlayer.Builder(context).setTrackSelector(trackSelector).build();
+        player.addAnalyticsListener(new AnalyticsListener() {
+            @Override
+            public void onDroppedVideoFrames(@NonNull EventTime eventTime, int droppedFrames, long elapsedMs) {
+                
+            }
+            @Override
+            public void onPlaybackStateChanged(EventTime eventTime, @Player.State int state) {
+                // if (state == ExoPlayer.STATE_READY) {
+                //     getAvailableVideoTracks();
+                // }
+            }
+
+            @Override
+            public void onBandwidthEstimate(@NonNull EventTime eventTime, int totalLoadTimeMs, long totalDownloadedBytes, long bitrateEstimate) {
+                totalBytes += totalDownloadedBytes;
+                totalLoadedTime += totalLoadTimeMs;
+
+            }
+        });
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onTracksChanged(Tracks tracks) {
+                Tracks currentTracks = player.getCurrentTracks(); // فقط Track های واقعی فعلی
+                for (Tracks.Group group : currentTracks.getGroups()) {
+                    if (group.getType() == C.TRACK_TYPE_VIDEO) {
+                        for (int i = 0; i < group.length; i++) {
+                            Format format = group.getTrackFormat(i);
+                            int width = format.width;
+                            int height = format.height;
+                            int bitrate = format.bitrate;
+                            TrackInfo trackInfo = new TrackInfo(width, height, bitrate);
+                            tracksList.add(trackInfo);
+                            if (group.isTrackSelected(i)) { 
+                                selectedTrack = trackInfo;
+                                Log.d("ReactExoplayerView", 
+                                    "Currently playing track: " + selectedTrack.width + "x" + selectedTrack.height + " @" + selectedTrack.bitrate + "bps");
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+       
 
         startProgressUpdates();
+        
     }
 
     public void setProgressListener(ProgressListener listener) {
@@ -415,8 +486,7 @@ public class ReactExoplayerView extends FrameLayout implements
         audioBecomingNoisyReceiver = new AudioBecomingNoisyReceiver(themedReactContext);
         audioFocusChangeListener = new OnAudioFocusChangedListener(this, themedReactContext);
         pictureInPictureReceiver = new PictureInPictureReceiver(this, themedReactContext);
-
-        init(context);
+        
     }
 
     private boolean isPlayingAd() {
@@ -2095,6 +2165,7 @@ public class ReactExoplayerView extends FrameLayout implements
     }
 
     public void setSrc(Source source) {
+
         if (source.getUri() != null) {
             clearResumePosition();
             boolean isSourceEqual = source.isEquals(this.source);
@@ -2103,12 +2174,12 @@ public class ReactExoplayerView extends FrameLayout implements
             final DataSource.Factory tmpMediaDataSourceFactory =
                     DataSourceUtil.getDefaultDataSourceFactory(this.themedReactContext, bandwidthMeter,
                             source.getHeaders());
-
+            
             @Nullable
             final DataSource.Factory overriddenMediaDataSourceFactory = ReactNativeVideoManager.Companion.getInstance().overrideMediaDataSourceFactory(source, tmpMediaDataSourceFactory);
 
             this.mediaDataSourceFactory = Objects.requireNonNullElse(overriddenMediaDataSourceFactory, tmpMediaDataSourceFactory);
-
+            initializeBytesCounting(this.themedReactContext, source.getUri().toString());
             if (source.getCmcdProps() != null) {
                 CMCDConfig cmcdConfig = new CMCDConfig(source.getCmcdProps());
                 CmcdConfiguration.Factory factory = cmcdConfig.toCmcdConfigurationFactory();
