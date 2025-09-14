@@ -14,13 +14,15 @@ import kotlin.math.roundToInt
 
 class VideoManagerModule(reactContext: ReactApplicationContext?) : ReactContextBaseJavaModule(reactContext) {
     override fun getName(): String = REACT_CLASS
+    @UIManagerType
+    val type = if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) UIManagerType.FABRIC else UIManagerType.DEFAULT
 
     private fun performOnPlayerView(reactTag: Int, callback: (ReactExoplayerView?) -> Unit) {
         UiThreadUtil.runOnUiThread {
             try {
                 val uiManager = UIManagerHelper.getUIManager(
                     reactApplicationContext,
-                    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) UIManagerType.FABRIC else UIManagerType.DEFAULT
+                    type
                 )
 
                 val view = uiManager?.resolveView(reactTag)
