@@ -1,37 +1,32 @@
 package com.brentvatne.react
 
-import com.brentvatne.common.api.Source
+import androidx.media3.exoplayer.ExoPlayer
 import com.brentvatne.exoplayer.ReactExoplayerView
-import com.facebook.react.bridge.Promise
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.bridge.UiThreadUtil
+import com.brentvatne.common.api.Source
+import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.uimanager.common.UIManagerType
 import kotlin.math.roundToInt
 
-class VideoManagerModule(reactContext: ReactApplicationContext?) : ReactContextBaseJavaModule(reactContext) {
+class VideoManagerModule(reactContext: ReactApplicationContext) :
+    ReactContextBaseJavaModule(reactContext) {
+
     override fun getName(): String = REACT_CLASS
+
     @UIManagerType
-    val type = if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) UIManagerType.FABRIC else UIManagerType.DEFAULT
+    val type = if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED)
+        UIManagerType.FABRIC
+    else
+        UIManagerType.DEFAULT
 
     private fun performOnPlayerView(reactTag: Int, callback: (ReactExoplayerView?) -> Unit) {
         UiThreadUtil.runOnUiThread {
             try {
-                val uiManager = UIManagerHelper.getUIManager(
-                    reactApplicationContext,
-                    type
-                )
-
+                val uiManager = UIManagerHelper.getUIManager(reactApplicationContext, type)
                 val view = uiManager?.resolveView(reactTag)
-
-                if (view is ReactExoplayerView) {
-                    callback(view)
-                } else {
-                    callback(null)
-                }
+                if (view is ReactExoplayerView) callback(view) else callback(null)
             } catch (e: Exception) {
                 callback(null)
             }
@@ -39,14 +34,11 @@ class VideoManagerModule(reactContext: ReactApplicationContext?) : ReactContextB
     }
 
     @ReactMethod
-    fun setPlayerPauseStateCmd(reactTag: Int, paused: Boolean?) {
-        performOnPlayerView(reactTag) {
-            it?.setPausedModifier(paused!!)
-        }
+    fun setPlayerPauseStateCmd(reactTag: Int, paused: Boolean) {
+        performOnPlayerView(reactTag) { it?.setPausedModifier(paused) }
     }
 
     @ReactMethod
-    @Suppress("UNUSED_PARAMETER") // codegen compatibility
     fun seekCmd(reactTag: Int, time: Float, tolerance: Float) {
         performOnPlayerView(reactTag) {
             it?.seekTo((time * 1000f).roundToInt().toLong())
@@ -55,30 +47,22 @@ class VideoManagerModule(reactContext: ReactApplicationContext?) : ReactContextB
 
     @ReactMethod
     fun setVolumeCmd(reactTag: Int, volume: Float) {
-        performOnPlayerView(reactTag) {
-            it?.setVolumeModifier(volume)
-        }
+        performOnPlayerView(reactTag) { it?.setVolumeModifier(volume) }
     }
 
     @ReactMethod
     fun setFullScreenCmd(reactTag: Int, fullScreen: Boolean) {
-        performOnPlayerView(reactTag) {
-            it?.setFullscreen(fullScreen)
-        }
+        performOnPlayerView(reactTag) { it?.setFullscreen(fullScreen) }
     }
 
     @ReactMethod
     fun enterPictureInPictureCmd(reactTag: Int) {
-        performOnPlayerView(reactTag) {
-            it?.enterPictureInPictureMode()
-        }
+        performOnPlayerView(reactTag) { it?.enterPictureInPictureMode() }
     }
 
     @ReactMethod
     fun exitPictureInPictureCmd(reactTag: Int) {
-        performOnPlayerView(reactTag) {
-            it?.exitPictureInPictureMode()
-        }
+        performOnPlayerView(reactTag) { it?.exitPictureInPictureMode() }
     }
 
     @ReactMethod
@@ -90,9 +74,7 @@ class VideoManagerModule(reactContext: ReactApplicationContext?) : ReactContextB
 
     @ReactMethod
     fun getCurrentPosition(reactTag: Int, promise: Promise) {
-        performOnPlayerView(reactTag) {
-            it?.getCurrentPosition(promise)
-        }
+        performOnPlayerView(reactTag) { it?.getCurrentPosition(promise) }
     }
 
     companion object {

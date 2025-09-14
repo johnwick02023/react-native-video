@@ -16,6 +16,10 @@ import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
 import com.facebook.react.uimanager.annotations.ReactProp
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.WritableMap
+import com.facebook.react.uimanager.events.RCTEventEmitter
+
 
 class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : ViewGroupManager<ReactExoplayerView>() {
 
@@ -73,7 +77,13 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         ReactNativeVideoManager.getInstance().unregisterView(this)
     }
 
-    override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any> = EventTypes.toMap()
+    override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any> {
+        val baseEvents = EventTypes.toMap().toMutableMap()
+    
+        baseEvents["onVideoProgress"] = mapOf("registrationName" to "onVideoProgress")
+    
+        return baseEvents
+    }
 
     override fun addEventEmitters(reactContext: ThemedReactContext, view: ReactExoplayerView) {
         super.addEventEmitters(reactContext, view)
@@ -263,4 +273,5 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         val controlsConfig = ControlsConfig.parse(controlsStyles)
         videoView.setControlsStyles(controlsConfig)
     }
+
 }

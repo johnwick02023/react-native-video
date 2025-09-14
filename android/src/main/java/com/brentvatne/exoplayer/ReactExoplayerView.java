@@ -151,6 +151,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import android.util.AttributeSet;
+
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.datasource.DefaultDataSource;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.Arguments;
+import com.brentvatne.exoplayer.CountingDataSource;
+import com.facebook.react.uimanager.events.RCTEventEmitter;
+import android.util.Log;
+
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
         LifecycleEventListener,
@@ -184,12 +194,84 @@ public class ReactExoplayerView extends FrameLayout implements
     private ImaAdsLoader adsLoader;
 
     private DataSource.Factory mediaDataSourceFactory;
-    private ExoPlayer player;
+    public ExoPlayer player;
     private DefaultTrackSelector trackSelector;
     private boolean playerNeedsSource;
     private ServiceConnection playbackServiceConnection;
     private PlaybackServiceBinder playbackServiceBinder;
+    //Custom//////////////////////////////////////////////
+    public long totalBytes = 0;
 
+    public interface ProgressListener {
+        void onProgress(long currentTimeMs, long bytesDownloaded);
+    }
+
+    private ProgressListener progressListener;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable progressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null) {
+                double currentTimeSec = player.getCurrentPosition() / 1000.0;
+                WritableMap map = Arguments.createMap();
+                map.putDouble("currentTime", currentTimeSec);
+                map.putDouble("bytesDownloaded", totalBytes);
+
+                ThemedReactContext reactContext = (ThemedReactContext) getContext();
+                Log.d("ReactExoplayerView", "Progress event sent: currentTime=" 
+                  + currentTimeSec + ", bytesDownloaded=" + totalBytes);
+
+                RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
+                rctEventEmitter.receiveEvent(
+                    getId(),
+                    "onVideoProgress",
+                    map
+                );
+            }
+            
+            handler.postDelayed(this, 3000);
+        }
+    };
+    
+    
+    private void init(Context context) {
+        DefaultDataSource.Factory defaultFactory = new DefaultDataSource.Factory(context);
+        CountingDataSource.Factory countingFactory = new CountingDataSource.Factory(defaultFactory);
+        countingFactory.setListener(totalBytesSoFar -> {
+            this.totalBytes = totalBytesSoFar; 
+        });
+        ProgressiveMediaSource.Factory mediaSourceFactory = new ProgressiveMediaSource.Factory(countingFactory);
+
+        player = new ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build();
+
+        startProgressUpdates();
+    }
+
+    public void setProgressListener(ProgressListener listener) {
+        this.progressListener = listener;
+    }
+
+    private void startProgressUpdates() {
+        handler.post(progressRunnable);
+    }
+
+    public void resetTotalBytes() {
+        totalBytes = 0;
+    }
+
+    public long getTotalBytes() {
+        return totalBytes;
+    }
+
+    public void setMediaItem(MediaItem item) {
+        if (player != null) {
+            player.setMediaItem(item);
+            player.prepare();
+        }
+    }
+    //////////////////////////////////////////////////////
     // logger to be enable by props
     private EventLogger debugEventLogger = null;
     private boolean enableDebug = false;
@@ -333,6 +415,8 @@ public class ReactExoplayerView extends FrameLayout implements
         audioBecomingNoisyReceiver = new AudioBecomingNoisyReceiver(themedReactContext);
         audioFocusChangeListener = new OnAudioFocusChangedListener(this, themedReactContext);
         pictureInPictureReceiver = new PictureInPictureReceiver(this, themedReactContext);
+
+        init(context);
     }
 
     private boolean isPlayingAd() {
@@ -359,8 +443,12 @@ public class ReactExoplayerView extends FrameLayout implements
 
     @Override
     protected void onDetachedFromWindow() {
-        cleanupPlaybackService();
         super.onDetachedFromWindow();
+        handler.removeCallbacks(progressRunnable);
+        if (player != null) {
+            player.release();
+            player = null;
+        }
     }
 
     // LifecycleEventListener implementation
