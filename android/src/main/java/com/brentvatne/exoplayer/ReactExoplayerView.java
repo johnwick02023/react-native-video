@@ -260,12 +260,14 @@ public class ReactExoplayerView extends FrameLayout implements
 
                 jsMap.putMap(String.valueOf(key), infoMap);
             }
+            WritableMap event = new WritableNativeMap();
+            event.putMap("stats", jsMap);
             ThemedReactContext reactContext = (ThemedReactContext) getContext();
             RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
             rctEventEmitter.receiveEvent(
                 getId(),
                 "onStatsChanged",
-                jsMap
+                event
             );
         }
     }
@@ -364,8 +366,12 @@ public class ReactExoplayerView extends FrameLayout implements
                             }
                         }
                         int bitrate = format.bitrate;
-                        double duration = (mediaLoadData.mediaEndTimeMs - mediaLoadData.mediaStartTimeMs) / 1000;
                         long bytes = loadEventInfo.bytesLoaded;
+                        double duration = (mediaLoadData.mediaEndTimeMs - mediaLoadData.mediaStartTimeMs) / 1000;
+                        if(bitrate != -1){
+                            duration = Math.ceil((bytes * 8) / bitrate);
+                        }
+                        
                         MediaDownloadedInfo media = new MediaDownloadedInfo(height, bitrate, duration, bytes, 1);
                         segments.add(media);
                     }

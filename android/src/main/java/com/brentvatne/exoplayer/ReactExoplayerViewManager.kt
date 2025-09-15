@@ -80,7 +80,7 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
     override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any> {
         val baseEvents = EventTypes.toMap().toMutableMap()
     
-        baseEvents["onDownload"] = mapOf("registrationName" to "onDownload")
+        baseEvents["onStatsChanged"] = mapOf("registrationName" to "onStatsChanged")
     
         return baseEvents
     }
