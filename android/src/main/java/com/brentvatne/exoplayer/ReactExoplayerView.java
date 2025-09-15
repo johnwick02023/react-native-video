@@ -1,5 +1,6 @@
 package com.brentvatne.exoplayer;
 
+
 import static androidx.media3.common.C.CONTENT_TYPE_DASH;
 import static androidx.media3.common.C.CONTENT_TYPE_HLS;
 import static androidx.media3.common.C.CONTENT_TYPE_OTHER;
@@ -143,6 +144,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -156,15 +158,22 @@ import android.util.AttributeSet;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.datasource.DefaultDataSource;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.bridge.Arguments;
 import com.brentvatne.exoplayer.TrackInfo;
+import com.brentvatne.exoplayer.MediaDownloadedInfo;
 import com.facebook.react.uimanager.events.RCTEventEmitter;
 import android.util.Log;
 import java.io.IOException;
 import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener;
 import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime;
-
+import androidx.media3.common.VideoSize;
+import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime;
+import androidx.media3.exoplayer.analytics.AnalyticsListener.Events;
+import androidx.media3.exoplayer.source.LoadEventInfo;
+import androidx.media3.exoplayer.source.MediaLoadData;
+import java.util.Iterator;
 
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
@@ -205,40 +214,65 @@ public class ReactExoplayerView extends FrameLayout implements
     private ServiceConnection playbackServiceConnection;
     private PlaybackServiceBinder playbackServiceBinder;
     //Custom//////////////////////////////////////////////
-    public long totalBytes = 0;
-    public int totalLoadedTime = 0;
+    public ArrayList<MediaDownloadedInfo> segments = new ArrayList<>();
     public ArrayList<TrackInfo> tracksList = new ArrayList<>();
-    public TrackInfo selectedTrack = null;
+    
+    public int selectedQuaility = 0;
     public interface ProgressListener {
         void onProgress(long currentTimeMs, long bytesDownloaded);
     }
 
     private ProgressListener progressListener;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private void doSendStatsChangedToNaive(){
+        if (player != null && segments.size() > 0) {
+            ArrayList<MediaDownloadedInfo> downloadedSegments = new ArrayList<>();
+            Iterator<MediaDownloadedInfo> iter = segments.iterator();
+            while (iter.hasNext()) {
+                MediaDownloadedInfo s = iter.next();
+                downloadedSegments.add(s.clone());
+                iter.remove();
+            }
+            Map<Integer, MediaDownloadedInfo> qualityStats = new HashMap<>();
+            for (MediaDownloadedInfo segment : downloadedSegments) {
+                int quality = segment.quality;
+                MediaDownloadedInfo stats = qualityStats.get(quality);
+                if (stats == null) {
+                    qualityStats.put(quality, segment);
+                } else {
+                    stats.duration += segment.duration;
+                    stats.bytes += segment.bytes;
+                    stats.count += segment.count;
+                    qualityStats.put(quality, stats);
+                }
+            }
+            WritableMap jsMap = new WritableNativeMap();
+
+            for (Map.Entry<Integer, MediaDownloadedInfo> entry : qualityStats.entrySet()) {
+                int key = entry.getKey();
+                MediaDownloadedInfo value = entry.getValue();
+                Log.d("ReactExoplayerView", "Aggrigated: " + value.toString());
+                WritableMap infoMap = new WritableNativeMap();
+                infoMap.putLong("bitrate", value.bitrate);
+                infoMap.putDouble("duration", value.duration);
+                infoMap.putLong("bytes", value.bytes);
+                infoMap.putInt("count", value.count);
+
+                jsMap.putMap(String.valueOf(key), infoMap);
+            }
+            ThemedReactContext reactContext = (ThemedReactContext) getContext();
+            RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
+            rctEventEmitter.receiveEvent(
+                getId(),
+                "onStatsChanged",
+                jsMap
+            );
+        }
+    }
     private final Runnable progressRunnable = new Runnable() {
         @Override
         public void run() {
-            if (player != null) {
-                double elapsedSeconds = totalLoadedTime / 1000.0;
-                long bytesDownloaded = totalBytes;
-                totalLoadedTime = 0;
-                totalBytes = 0;
-                WritableMap map = Arguments.createMap();
-                map.putDouble("elapsedSeconds", elapsedSeconds);
-                map.putDouble("bytesDownloaded", bytesDownloaded);
-
-                ThemedReactContext reactContext = (ThemedReactContext) getContext();
-                Log.d("ReactExoplayerView", "Progress event sent: elapsedSeconds=" 
-                  + elapsedSeconds + ", bytesDownloaded=" + bytesDownloaded);
-
-                RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
-                rctEventEmitter.receiveEvent(
-                    getId(),
-                    "onDownload",
-                    map
-                );
-            }
-            
+            doSendStatsChangedToNaive();
             handler.postDelayed(this, 3000);
         }
     };
@@ -266,7 +300,33 @@ public class ReactExoplayerView extends FrameLayout implements
             }
         }
     }
-    
+    private void changeQuality(int height){
+        MappingTrackSelector.MappedTrackInfo mappedTrackInfo = trackSelector.getCurrentMappedTrackInfo();
+        if (mappedTrackInfo == null) return;
+        for (int rendererIndex = 0; rendererIndex < mappedTrackInfo.getRendererCount(); rendererIndex++) {
+            if (mappedTrackInfo.getRendererType(rendererIndex) != androidx.media3.common.C.TRACK_TYPE_VIDEO)
+                continue;
+
+            TrackGroupArray trackGroups = mappedTrackInfo.getTrackGroups(rendererIndex);
+            for (int groupIndex = 0; groupIndex < trackGroups.length; groupIndex++) {
+                TrackGroup group = trackGroups.get(groupIndex);
+                for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
+                    Format format = group.getFormat(trackIndex);
+                    if (format.height == height) { 
+                        DefaultTrackSelector.SelectionOverride override =
+                                new DefaultTrackSelector.SelectionOverride(groupIndex, trackIndex);
+                        DefaultTrackSelector.Parameters parameters =
+                                trackSelector.buildUponParameters()
+                                        .setSelectionOverride(rendererIndex, trackGroups, override)
+                                        .build();
+                        trackSelector.setParameters(parameters);
+                        return;
+                    }
+                }
+            }
+        }
+        
+    }
     private void initializeBytesCounting(Context context, String url) {
         ExoTrackSelection.Factory videoTrackSelectionFactory = new AdaptiveTrackSelection.Factory();
         trackSelector = new DefaultTrackSelector(context, videoTrackSelectionFactory);
@@ -282,35 +342,47 @@ public class ReactExoplayerView extends FrameLayout implements
                 //     getAvailableVideoTracks();
                 // }
             }
-
             @Override
             public void onBandwidthEstimate(@NonNull EventTime eventTime, int totalLoadTimeMs, long totalDownloadedBytes, long bitrateEstimate) {
-                totalBytes += totalDownloadedBytes;
-                totalLoadedTime += totalLoadTimeMs;
-
+                
+            }
+            @Override
+            public void onLoadCompleted(
+                    EventTime eventTime,
+                    LoadEventInfo loadEventInfo,
+                    MediaLoadData mediaLoadData
+            ) {
+                if (mediaLoadData.dataType == C.DATA_TYPE_MEDIA) {
+                    Format format = mediaLoadData.trackFormat;
+                    if (format != null) {
+                        int width = format.width;
+                        int height = format.height;
+                        if(height == -1){
+                            Format videoFormat = player.getVideoFormat();
+                            if (videoFormat != null) {
+                                height = videoFormat.height;
+                            }
+                        }
+                        int bitrate = format.bitrate;
+                        double duration = (mediaLoadData.mediaEndTimeMs - mediaLoadData.mediaStartTimeMs) / 1000;
+                        long bytes = loadEventInfo.bytesLoaded;
+                        MediaDownloadedInfo media = new MediaDownloadedInfo(height, bitrate, duration, bytes, 1);
+                        segments.add(media);
+                    }
+                    
+                }
             }
         });
         player.addListener(new Player.Listener() {
             @Override
+            public void onVideoSizeChanged(VideoSize videoSize) {
+                selectedQuaility = videoSize.height;
+            }
+            @Override
             public void onTracksChanged(Tracks tracks) {
-                Tracks currentTracks = player.getCurrentTracks(); // فقط Track های واقعی فعلی
-                for (Tracks.Group group : currentTracks.getGroups()) {
-                    if (group.getType() == C.TRACK_TYPE_VIDEO) {
-                        for (int i = 0; i < group.length; i++) {
-                            Format format = group.getTrackFormat(i);
-                            int width = format.width;
-                            int height = format.height;
-                            int bitrate = format.bitrate;
-                            TrackInfo trackInfo = new TrackInfo(width, height, bitrate);
-                            tracksList.add(trackInfo);
-                            if (group.isTrackSelected(i)) { 
-                                selectedTrack = trackInfo;
-                                Log.d("ReactExoplayerView", 
-                                    "Currently playing track: " + selectedTrack.width + "x" + selectedTrack.height + " @" + selectedTrack.bitrate + "bps");
-                                return;
-                            }
-                        }
-                    }
+                Format videoFormat = player.getVideoFormat();
+                if (videoFormat != null) {
+                    selectedQuaility = videoFormat.height;
                 }
             }
         });
@@ -328,13 +400,6 @@ public class ReactExoplayerView extends FrameLayout implements
         handler.post(progressRunnable);
     }
 
-    public void resetTotalBytes() {
-        totalBytes = 0;
-    }
-
-    public long getTotalBytes() {
-        return totalBytes;
-    }
 
     public void setMediaItem(MediaItem item) {
         if (player != null) {
@@ -516,6 +581,7 @@ public class ReactExoplayerView extends FrameLayout implements
         super.onDetachedFromWindow();
         handler.removeCallbacks(progressRunnable);
         if (player != null) {
+            doSendStatsChangedToNaive();
             player.release();
             player = null;
         }
