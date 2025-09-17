@@ -135,6 +135,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     @objc var onTextTracks: RCTDirectEventBlock?
     @objc var onAudioTracks: RCTDirectEventBlock?
     @objc var onTextTrackDataChanged: RCTDirectEventBlock?
+    @objc var onBandwidth: RCTDirectEventBlock?
 
     @objc
     func _onPictureInPictureEnter() {
@@ -269,6 +270,12 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 object: nil
             )
         #endif
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerItemNewAccessLogEntry),
+            name: .AVPlayerItemNewAccessLogEntry,
+            object: nil
+        )
 
         _playerObserver._handlers = self
         #if USE_VIDEO_CACHING
@@ -305,9 +312,32 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         ReactNativeVideoManager.shared.unregisterView(newInstance: self)
         AudioSessionManager.shared.unregisterView(view: self)
     }
+    @objc
+    func playerItemNewAccessLogEntry(_ notification: Notification) {
+        guard let playerItem = notification.object as? AVPlayerItem,
+              let events = playerItem.accessLog()?.events,
+              let lastEvent = events.last else { return }
 
+        // اطلاعات segment
+        let uri = lastEvent.uri ?? ""
+        let bytes = lastEvent.numberOfBytesTransferred
+        let bitrate = lastEvent.indicatedBitrate
+        let transferDuration = lastEvent.transferDuration
+        let durationWatched = lastEvent.durationWatched
+
+        // ارسال event به JS
+        if let onBandwidth = onBandwidth {
+            onBandwidth([
+                "uri": uri,
+                "bytesTransferred": bytes,
+                "bitrate": bitrate,
+                "transferDuration": transferDuration,
+                "durationWatched": durationWatched
+            ])
+        }
+    }
     // MARK: - App lifecycle handlers
-
+    
     func getIsExternalPlaybackActive() -> Bool {
         #if os(visionOS)
             let isExternalPlaybackActive = false
