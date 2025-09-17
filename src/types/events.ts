@@ -257,6 +257,7 @@ export interface ReactVideoEvents {
   onVolumeChange?: (e: OnVolumeChangeData) => void; //Android, iOS
   onProgress?: (e: OnProgressData) => void; //All
   onStatsChanged?: (e: any) => void;
+  onBandwidth?: (e: any) => void;
   onReadyForDisplay?: () => void; //Android, iOS
   onReceiveAdEvent?: (e: OnReceiveAdEventData) => void; //Android, iOS
   onRestoreUserInterfaceForPictureInPictureStop?: () => void; //iOS
