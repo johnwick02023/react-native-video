@@ -193,6 +193,13 @@ export type OnProgressData = Readonly<{
   seekableDuration: Float;
 }>;
 
+export type onWatchTrackingData = Readonly<{
+  duration: Int32;
+  resolution: Int32;
+  bitrate: Int32;
+  bytes: Int32;
+}>;
+
 export type OnBandwidthUpdateData = Readonly<{
   bitrate: Int32;
   width?: Float;

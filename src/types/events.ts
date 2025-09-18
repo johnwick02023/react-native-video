@@ -18,6 +18,7 @@ import type {
   OnVideoErrorData,
   OnVideoTracksData,
   OnVolumeChangeData,
+  onWatchTrackingData,
 } from '../specs/VideoNativeComponent';
 
 export type * from '../specs/VideoNativeComponent';
@@ -257,7 +258,7 @@ export interface ReactVideoEvents {
   onVolumeChange?: (e: OnVolumeChangeData) => void; //Android, iOS
   onProgress?: (e: OnProgressData) => void; //All
   onStatsChanged?: (e: any) => void;
-  onWatchTracking?: (e: any) => void;
+  onWatchTracking?: (e: onWatchTrackingData) => void;
   onReadyForDisplay?: () => void; //Android, iOS
   onReceiveAdEvent?: (e: OnReceiveAdEventData) => void; //Android, iOS
   onRestoreUserInterfaceForPictureInPictureStop?: () => void; //iOS

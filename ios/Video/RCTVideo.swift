@@ -10,6 +10,7 @@ import React
 
 class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverHandler {
     var _player: AVPlayer?
+    private var _watchTrackingService: WatchTrackingService?
     private var _playerItem: AVPlayerItem?
     private var _source: VideoSource?
     private var _playerLayer: AVPlayerLayer?
@@ -113,6 +114,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     @objc var onVideoError: RCTDirectEventBlock?
     @objc var onVideoProgress: RCTDirectEventBlock?
     @objc var onVideoBandwidthUpdate: RCTDirectEventBlock?
+    @objc var onWatchTracking: RCTDirectEventBlock?
     @objc var onVideoSeek: RCTDirectEventBlock?
     @objc var onVideoEnd: RCTDirectEventBlock?
     @objc var onTimedMetadata: RCTDirectEventBlock?
@@ -300,7 +302,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         NotificationCenter.default.removeObserver(self)
         self.removePlayerLayer()
         _playerObserver.clearPlayer()
-
+        if _watchTrackingService != nil {
+            _watchTrackingService?.stopReporting()
+        }
         if let player = _player {
             NowPlayingInfoCenterManager.shared.removePlayer(player: player)
         }
@@ -660,6 +664,12 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         #endif
         isSetSourceOngoing = false
         applyNextSource()
+        if _player != nil, let _sourceUri = _source?.uri, _sourceUri.hasSuffix(".m3u8") {
+            if _watchTrackingService == nil {
+                _watchTrackingService = WatchTrackingService(player: _player!, playerItem: _playerItem!, onWatchTracking: onWatchTracking!)
+                _watchTrackingService?.startReporting()
+            }
+        }
     }
 
     @objc
