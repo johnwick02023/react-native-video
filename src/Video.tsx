@@ -37,6 +37,7 @@ import type {
   OnVideoAspectRatioData,
   OnVideoErrorData,
   OnVideoTracksData,
+  onWatchTrackingData,
   VideoSrc,
 } from './specs/VideoNativeComponent';
 import {
@@ -84,6 +85,7 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
       onEnd,
       onBuffer,
       onBandwidthUpdate,
+      onWatchTracking,
       onControlsVisibilityChange,
       onExternalPlaybackChange,
       onFullscreenPlayerWillPresent,
@@ -614,6 +616,13 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
       [onBandwidthUpdate],
     );
 
+    const _onWatchTracking = useCallback(
+      (e: NativeSyntheticEvent<onWatchTrackingData>) => {
+        onWatchTracking?.(e.nativeEvent);
+      },
+      [onWatchTracking],
+    );
+
     const _onReceiveAdEvent = useCallback(
       (e: NativeSyntheticEvent<OnReceiveAdEventData>) => {
         onReceiveAdEvent?.(e.nativeEvent);
@@ -861,6 +870,10 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
           onVideoBandwidthUpdate={
             onBandwidthUpdate ? _onBandwidthUpdate : undefined
           }
+          onWatchTracking={
+            onWatchTracking ? _onWatchTracking : undefined
+          }
+          
           onTimedMetadata={onTimedMetadata ? _onTimedMetadata : undefined}
           onAudioTracks={onAudioTracks ? _onAudioTracks : undefined}
           onTextTracks={onTextTracks ? _onTextTracks : undefined}

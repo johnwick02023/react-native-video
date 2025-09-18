@@ -386,6 +386,7 @@ export interface VideoNativeProps extends ViewProps {
   onVideoError?: DirectEventHandler<OnVideoErrorData>;
   onVideoProgress?: DirectEventHandler<OnProgressData>;
   onVideoBandwidthUpdate?: DirectEventHandler<OnBandwidthUpdateData>;
+  onWatchTracking?: DirectEventHandler<onWatchTrackingData>;
   onVideoSeek?: DirectEventHandler<OnSeekData>;
   onVideoEnd?: DirectEventHandler<{}>; // all
   onVideoAudioBecomingNoisy?: DirectEventHandler<{}>;
