@@ -10,6 +10,7 @@ class WatchTrackingService {
     private var bitrate: Int32 = -1
     private var resolution: Int32 = 0
     private var onWatchTracking: RCTDirectEventBlock?
+    private var reportedPause: Bool = false
 
     init(player: AVPlayer, playerItem: AVPlayerItem?, onWatchTracking: RCTDirectEventBlock?) {
         self.player = player
@@ -39,8 +40,21 @@ class WatchTrackingService {
 
     private func report(seconds: Int32 = 3) {
         lastReportTime = Date()
+        if player?.timeControlStatus == .playing {
+            reportedPause = false
+            handler(seconds: <#T##Int32#>)
+        } else if player?.timeControlStatus == .paused {
+            print("Video is paused")
+            if !reportedPause{
+                reportedPause = true
+                stopReporting()
+            }
+        } else if player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+            print("Waiting (buffering or seeking)")
+        }
+    }
+    private func handler(seconds: Int32) {
         Task {
-            
             let tracks = await RCTVideoAssetsUtils.getTracks(asset:  playerItem!.asset, withMediaType: .video)
             let presentationSize =  playerItem?.presentationSize
             if presentationSize?.height != 0.0 {
@@ -67,7 +81,7 @@ class WatchTrackingService {
             }else{
                 print("There is no any bitrate in this video")
             }
-            
         }
+        
     }
 }
