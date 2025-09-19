@@ -217,64 +217,58 @@ public class ReactExoplayerView extends FrameLayout implements
     public ArrayList<MediaDownloadedInfo> segments = new ArrayList<>();
     public ArrayList<TrackInfo> tracksList = new ArrayList<>();
     
+    public int currentResolution = -1;
+    public int currentBitrate = 0;
+    private long lastWatchTrackingTime = 0;
     public int selectedQuaility = 0;
     public interface ProgressListener {
         void onProgress(long currentTimeMs, long bytesDownloaded);
     }
-
     private ProgressListener progressListener;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private void doSendStatsChangedToNaive(){
-        if (player != null && segments.size() > 0) {
-            ArrayList<MediaDownloadedInfo> downloadedSegments = new ArrayList<>();
-            Iterator<MediaDownloadedInfo> iter = segments.iterator();
-            while (iter.hasNext()) {
-                MediaDownloadedInfo s = iter.next();
-                downloadedSegments.add(s.clone());
-                iter.remove();
-            }
-            Map<Integer, MediaDownloadedInfo> qualityStats = new HashMap<>();
-            for (MediaDownloadedInfo segment : downloadedSegments) {
-                int quality = segment.quality;
-                MediaDownloadedInfo stats = qualityStats.get(quality);
-                if (stats == null) {
-                    qualityStats.put(quality, segment);
-                } else {
-                    stats.duration += segment.duration;
-                    stats.bytes += segment.bytes;
-                    stats.count += segment.count;
-                    qualityStats.put(quality, stats);
-                }
-            }
-            WritableMap jsMap = new WritableNativeMap();
+    private void doWatchTracking(){
+        long now = System.currentTimeMillis();
+        int seconds;
 
-            for (Map.Entry<Integer, MediaDownloadedInfo> entry : qualityStats.entrySet()) {
-                int key = entry.getKey();
-                MediaDownloadedInfo value = entry.getValue();
-                Log.d("ReactExoplayerView", "Aggrigated: " + value.toString());
-                WritableMap infoMap = new WritableNativeMap();
-                infoMap.putLong("bitrate", value.bitrate);
-                infoMap.putDouble("duration", value.duration);
-                infoMap.putLong("bytes", value.bytes);
-                infoMap.putInt("count", value.count);
-
-                jsMap.putMap(String.valueOf(key), infoMap);
-            }
-            WritableMap event = new WritableNativeMap();
-            event.putMap("stats", jsMap);
-            ThemedReactContext reactContext = (ThemedReactContext) getContext();
-            RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
-            rctEventEmitter.receiveEvent(
-                getId(),
-                "onStatsChanged",
-                event
-            );
+        if (lastWatchTrackingTime == 0) {
+            seconds = 3;
+        } else {
+            seconds = (int) ((now - lastWatchTrackingTime) / 1000);
+            if (seconds <= 0) seconds = 1;
         }
+
+        lastWatchTrackingTime = now;
+        int approxBytes = (currentBitrate * seconds) / 8;
+        Format videoFormat = player.getVideoFormat();
+        if (videoFormat != null) {
+            currentResolution = videoFormat.height;
+        }
+        Log.d("ReactExoplayerView", "📡 Report → time: "+seconds+"s, res: "+currentResolution+", bitrate: "+currentBitrate+", bytes≈ " + approxBytes);
+        WritableMap infoMap = new WritableNativeMap();
+        infoMap.putLong("bitrate", currentBitrate);
+        infoMap.putDouble("duration", seconds);
+        infoMap.putLong("resolution", currentResolution);
+        infoMap.putInt("bytes", approxBytes);
+        
+        ThemedReactContext reactContext = (ThemedReactContext) getContext();
+        RCTEventEmitter rctEventEmitter = reactContext.getJSModule(RCTEventEmitter.class);
+        rctEventEmitter.receiveEvent(
+            getId(),
+            "onWatchTracking",
+            infoMap
+        );
     }
     private final Runnable progressRunnable = new Runnable() {
         @Override
         public void run() {
-            doSendStatsChangedToNaive();
+            if (player != null 
+                && currentBitrate > 0
+                && player.getPlaybackState() == Player.STATE_READY
+                && player.getPlayWhenReady()
+                && !isInBackground
+            ){
+                doWatchTracking();
+            }
             handler.postDelayed(this, 3000);
         }
     };
@@ -357,23 +351,15 @@ public class ReactExoplayerView extends FrameLayout implements
                 if (mediaLoadData.dataType == C.DATA_TYPE_MEDIA) {
                     Format format = mediaLoadData.trackFormat;
                     if (format != null) {
-                        int width = format.width;
-                        int height = format.height;
-                        if(height == -1){
-                            Format videoFormat = player.getVideoFormat();
-                            if (videoFormat != null) {
-                                height = videoFormat.height;
-                            }
-                        }
-                        int bitrate = format.bitrate;
-                        long bytes = loadEventInfo.bytesLoaded;
-                        double duration = (mediaLoadData.mediaEndTimeMs - mediaLoadData.mediaStartTimeMs) / 1000;
-                        if(bitrate != -1){
-                            duration = Math.ceil((bytes * 8) / bitrate);
-                        }
-                        
-                        MediaDownloadedInfo media = new MediaDownloadedInfo(height, bitrate, duration, bytes, 1);
-                        segments.add(media);
+                        // int width = format.width;
+                        // int height = format.height;
+                        // if(height == -1){
+                        //     Format videoFormat = player.getVideoFormat();
+                        //     if (videoFormat != null) {
+                        //         currentResolution = videoFormat.height;
+                        //     }
+                        // }
+                        currentBitrate = format.bitrate;
                     }
                     
                 }
@@ -402,8 +388,21 @@ public class ReactExoplayerView extends FrameLayout implements
         this.progressListener = listener;
     }
 
+    private boolean isProgressRunning = false;
     private void startProgressUpdates() {
-        handler.post(progressRunnable);
+        if(!isProgressRunning){
+            isProgressRunning = true;
+            handler.post(progressRunnable);
+        }
+        
+    }
+    private void stopProgressUpdates() {
+        handler.removeCallbacks(progressRunnable);
+        if (isProgressRunning) {
+            handler.removeCallbacks(progressRunnable);
+            isProgressRunning = false;
+            doWatchTracking();
+        }
     }
 
 
@@ -585,9 +584,8 @@ public class ReactExoplayerView extends FrameLayout implements
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        handler.removeCallbacks(progressRunnable);
+        stopProgressUpdates();
         if (player != null) {
-            doSendStatsChangedToNaive();
             player.release();
             player = null;
         }
@@ -1533,7 +1531,7 @@ public class ReactExoplayerView extends FrameLayout implements
         if (player == null) {
             return;
         }
-
+        
         if (playWhenReady) {
             this.hasAudioFocus = requestAudioFocus();
             if (this.hasAudioFocus) {
@@ -1547,6 +1545,8 @@ public class ReactExoplayerView extends FrameLayout implements
     private void resumePlayback() {
         if (player != null) {
             if (!player.getPlayWhenReady()) {
+                Log.d("ReactExoplayerView", "Resume");
+                 startProgressUpdates();
                 setPlayWhenReady(true);
             }
             setKeepScreenOn(preventsDisplaySleepDuringVideoPlayback);
@@ -1555,7 +1555,9 @@ public class ReactExoplayerView extends FrameLayout implements
 
     private void pausePlayback() {
         if (player != null) {
+            Log.d("ReactExoplayerView", "Pause");
             if (player.getPlayWhenReady()) {
+                stopProgressUpdates();
                 setPlayWhenReady(false);
             }
         }

@@ -257,7 +257,6 @@ export interface ReactVideoEvents {
   onPlaybackRateChange?: (e: OnPlaybackRateChangeData) => void; //All
   onVolumeChange?: (e: OnVolumeChangeData) => void; //Android, iOS
   onProgress?: (e: OnProgressData) => void; //All
-  onStatsChanged?: (e: any) => void;
   onWatchTracking?: (e: onWatchTrackingData) => void;
   onReadyForDisplay?: () => void; //Android, iOS
   onReceiveAdEvent?: (e: OnReceiveAdEventData) => void; //Android, iOS
