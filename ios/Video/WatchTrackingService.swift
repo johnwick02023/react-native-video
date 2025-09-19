@@ -40,18 +40,10 @@ class WatchTrackingService {
 
     private func report(seconds: Int32 = 3) {
         lastReportTime = Date()
-        if player?.timeControlStatus == .playing {
-            reportedPause = false
-            handler(seconds: <#T##Int32#>)
-        } else if player?.timeControlStatus == .paused {
-            print("Video is paused")
-            if !reportedPause{
-                reportedPause = true
-                stopReporting()
-            }
-        } else if player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
-            print("Waiting (buffering or seeking)")
+        if player?.timeControlStatus != .waitingToPlayAtSpecifiedRate {
+            handler(seconds: seconds)
         }
+        
     }
     private func handler(seconds: Int32) {
         Task {

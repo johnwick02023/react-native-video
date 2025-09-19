@@ -293,6 +293,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     }
 
     deinit {
+        if _watchTrackingService != nil {
+            _watchTrackingService?.stopReporting()
+        }
         #if USE_GOOGLE_IMA
             _imaAdsManager.releaseAds()
             _imaAdsManager = nil
@@ -302,9 +305,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         NotificationCenter.default.removeObserver(self)
         self.removePlayerLayer()
         _playerObserver.clearPlayer()
-        if _watchTrackingService != nil {
-            _watchTrackingService?.stopReporting()
-        }
         if let player = _player {
             NowPlayingInfoCenterManager.shared.removePlayer(player: player)
         }
@@ -683,7 +683,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         if _player != nil, let _sourceUri = _source?.uri, _sourceUri.hasSuffix(".m3u8") {
             if _watchTrackingService == nil {
                 _watchTrackingService = WatchTrackingService(player: _player!, playerItem: _playerItem!, onWatchTracking: onWatchTracking!)
-                _watchTrackingService?.startReporting()
             }
         }
     }
@@ -1696,7 +1695,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             _isBuffering = false
         }
     }
-
+    private var _isWatchingService : Bool = false
     func handleTimeControlStatusChange(player: AVPlayer, change: NSKeyValueObservedChange<AVPlayer.TimeControlStatus>) {
         if player.timeControlStatus == change.oldValue && change.oldValue != nil {
             return
@@ -1705,9 +1704,19 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             return
         }
         let isPlaying = player.timeControlStatus == .playing
-
         guard _isPlaying != isPlaying else { return }
         _isPlaying = isPlaying
+        if isPlaying {
+            if _watchTrackingService != nil, !_isWatchingService {
+                _watchTrackingService?.startReporting()
+                _isWatchingService = true
+            }
+        }else{
+            if _watchTrackingService != nil, _isWatchingService {
+                _watchTrackingService?.stopReporting()
+                _isWatchingService = false
+            }
+        }
         if _controls {
             _paused = !isPlaying
         }
