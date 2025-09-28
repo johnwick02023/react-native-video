@@ -1822,22 +1822,7 @@ public class ReactExoplayerView extends FrameLayout implements
     }
 
     private ArrayList<VideoTrack> getVideoTrackInfoFromManifest() {
-        FutureTask<VideoTrackInfo[]> task = new FutureTask<>(() -> getVideoTrackInfoFromManifest(0));
-        Executors.newSingleThreadExecutor().execute(task);
-
-        try {
-            VideoTrackInfo[] infos = task.get(); // خروجی متد اصلی
-            ArrayList<VideoTrack> tracks = new ArrayList<>();
-            if (infos != null) {
-                for (VideoTrackInfo info : infos) {
-                    tracks.add(new VideoTrack(info)); // فرض بر اینه که VideoTrack سازنده‌ای داره که VideoTrackInfo می‌گیره
-                }
-            }
-            return tracks;
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-            return null;
-        }
+        return this.getVideoTrackInfoFromManifest(0);
     }
 
     // We need retry count to in case where minefest request fails from poor network conditions
