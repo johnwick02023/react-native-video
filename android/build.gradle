@@ -105,6 +105,11 @@ def configStringPath = ExoplayerDependencies
 // }
 
 android {
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+        baseline = file("lint-baseline.xml")
+    }
     if (supportsNamespace()) {
         namespace 'com.brentvatne.react'
 

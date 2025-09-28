@@ -178,7 +178,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.ArrayList;
-import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
