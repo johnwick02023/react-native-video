@@ -174,6 +174,11 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener.Events;
 import androidx.media3.exoplayer.source.LoadEventInfo;
 import androidx.media3.exoplayer.source.MediaLoadData;
 import java.util.Iterator;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
+import java.util.ArrayList;
+import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
@@ -1817,7 +1822,22 @@ public class ReactExoplayerView extends FrameLayout implements
     }
 
     private ArrayList<VideoTrack> getVideoTrackInfoFromManifest() {
-        return this.getVideoTrackInfoFromManifest(0);
+        FutureTask<VideoTrackInfo[]> task = new FutureTask<>(() -> getVideoTrackInfoFromManifest(0));
+        Executors.newSingleThreadExecutor().execute(task);
+
+        try {
+            VideoTrackInfo[] infos = task.get(); // خروجی متد اصلی
+            ArrayList<VideoTrack> tracks = new ArrayList<>();
+            if (infos != null) {
+                for (VideoTrackInfo info : infos) {
+                    tracks.add(new VideoTrack(info)); // فرض بر اینه که VideoTrack سازنده‌ای داره که VideoTrackInfo می‌گیره
+                }
+            }
+            return tracks;
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     // We need retry count to in case where minefest request fails from poor network conditions
